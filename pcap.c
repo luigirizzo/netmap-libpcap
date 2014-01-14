@@ -106,7 +106,6 @@
 
 #ifdef PCAP_SUPPORT_NETMAP
 pcap_t* pcap_netmap_create(const char *device, char *ebuf, int *is_ours);
-int pcap_netmap_findalldevs(pcap_if_t **pdevlist, char* errbuf);
 #endif
 
 int
@@ -313,7 +312,7 @@ struct capture_source_type {
 	pcap_t *(*create_op)(const char *, char *, int *);
 } capture_source_types[] = {
 #ifdef PCAP_SUPPORT_NETMAP
-	{ pcap_netmap_findalldevs, pcap_netmap_create },
+	{ NULL, pcap_netmap_create },
 #endif
 #ifdef HAVE_DAG_API
 	{ dag_findalldevs, dag_create },

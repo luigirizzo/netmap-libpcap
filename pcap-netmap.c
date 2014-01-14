@@ -8,7 +8,6 @@
 #include "config.h"
 #endif
 
-
 #include <poll.h>
 #include <ctype.h>
 #include <errno.h>
@@ -24,7 +23,7 @@
 #include "pcap-int.h"
 
 #if defined (linux)
-/* on FreeBSD we use IFF_PPROMISC which is in flagshigh.
+/* On FreeBSD we use IFF_PPROMISC which is in ifr_flagshigh.
  * remap to IFF_PROMISC on linux
  */
 #define IFF_PPROMISC	IFF_PROMISC
@@ -36,11 +35,11 @@ struct pcap_netmap {
 	pcap_handler cb;	/* callback and argument */
 	u_char *cb_arg;
 	int must_clear_promisc;	/* flag */
-	uint64_t rx_pkts;	/* count accepted by filter */
+	uint64_t rx_pkts;	/* count of packets received before the filter */
 };
 
 static int
-pcap_stats_netmap(pcap_t *p, struct pcap_stat *ps)
+pcap_netmap_stats(pcap_t *p, struct pcap_stat *ps)
 {
 	struct pcap_netmap *pn = p->priv;
 
@@ -57,9 +56,8 @@ pcap_netmap_filter(u_char *arg, struct pcap_pkthdr *h, const u_char *buf)
 	struct pcap_netmap *pn = p->priv;
 
 	++pn->rx_pkts;
-	if (bpf_filter(p->fcode.bf_insns, buf, h->len, h->caplen)) {
+	if (bpf_filter(p->fcode.bf_insns, buf, h->len, h->caplen))
 		pn->cb(pn->cb_arg, h, buf);
-	}
 }
 
 static int
@@ -68,19 +66,16 @@ pcap_netmap_dispatch(pcap_t *p, int cnt, pcap_handler cb, u_char *user)
 	int ret;
 	struct pcap_netmap *pn = p->priv;
 	struct nm_desc_t *d = pn->d;
-	struct pollfd pfd;
-
-	pfd.fd = p->fd;
-	pfd.events = POLLIN;
+	struct pollfd pfd = { .fd = p->fd, .events = POLLIN, .revents = 0 };
 
 	pn->cb = cb;
 	pn->cb_arg = user;
 
 	for (;;) {
 		if (p->break_loop) {
-                        p->break_loop = 0;
-                        return PCAP_ERROR_BREAK;
-                }
+			p->break_loop = 0;
+			return PCAP_ERROR_BREAK;
+		}
 		/* nm_dispatch won't run forever */
 		ret = nm_dispatch((void *)d, cnt, (void *)pcap_netmap_filter, (void *)p);
 		if (ret != 0)
@@ -105,11 +100,7 @@ pcap_netmap_ioctl(pcap_t *p, u_long what, uint32_t *if_flags)
 	struct pcap_netmap *pn = p->priv;
 	struct nm_desc_t *d = pn->d;
 	struct ifreq ifr;
-	int error, fd;
-
-#if defined( __FreeBSD__ ) || defined (__APPLE__)
-	fd = me->fd;
-#endif
+	int error, fd = d->fd;
 
 #ifdef linux
 	fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -119,8 +110,8 @@ pcap_netmap_ioctl(pcap_t *p, u_long what, uint32_t *if_flags)
 	}
 #endif /* linux */
 	bzero(&ifr, sizeof(ifr));
-        strncpy(ifr.ifr_name, d->req.nr_name, sizeof(ifr.ifr_name));
-        switch (what) {
+	strncpy(ifr.ifr_name, d->req.nr_name, sizeof(ifr.ifr_name));
+	switch (what) {
 	case SIOCSIFFLAGS:
 		ifr.ifr_flags = *if_flags;
 		ifr.ifr_flagshigh = *if_flags >> 16;
@@ -143,9 +134,9 @@ pcap_netmap_close(pcap_t *p)
 {
 	struct pcap_netmap *pn = p->priv;
 	struct nm_desc_t *d = pn->d;
+	uint32_t if_flags = 0;
 
 	if (pn->must_clear_promisc) {
-		uint32_t if_flags = 0;
 		pcap_netmap_ioctl(p, SIOCGIFFLAGS, &if_flags); /* fetch flags */
 		if (if_flags & IFF_PPROMISC) {
 			if_flags &= ~IFF_PPROMISC;
@@ -156,13 +147,12 @@ pcap_netmap_close(pcap_t *p)
 }
 
 static int
-pcap_activate_netmap(pcap_t *p)
+pcap_netmap_activate(pcap_t *p)
 {
 	struct pcap_netmap *pn = p->priv;
-	struct nm_desc_t *d;
+	struct nm_desc_t *d = nm_open(p->opt.source, NULL, 0, 0);
+	uint32_t if_flags = 0;
 
-	/* maybe trim queue after the '-' */
-	d = nm_open(p->opt.source, NULL, 0, 0);
 	if (d == NULL) {
 		snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
 			"netmap open: cannot access %s: %s\n",
@@ -173,10 +163,7 @@ pcap_activate_netmap(pcap_t *p)
 		__FUNCTION__, p->opt.source, d, d->fd, d->first_rx_ring, d->last_rx_ring);
 	pn->d = d;
 	p->fd = d->fd;
-	// fprintf(stderr, "timeout %d imm %d promisc %d\n",
-	//	p->opt.timeout, p->opt.immediate, p->opt.promisc);
-	if (!(d->req.nr_ringid & NETMAP_SW_RING) && p->opt.promisc) {
-		uint32_t if_flags = 0;
+	if (p->opt.promisc && !(d->req.nr_ringid & NETMAP_SW_RING)) {
 		pcap_netmap_ioctl(p, SIOCGIFFLAGS, &if_flags); /* fetch flags */
 		if (!(if_flags & IFF_PPROMISC)) {
 			pn->must_clear_promisc = 1;
@@ -185,20 +172,19 @@ pcap_activate_netmap(pcap_t *p)
 		}
 	}
 	p->linktype = DLT_EN10MB;
-
 	p->selectable_fd = p->fd;
-
 	p->read_op = pcap_netmap_dispatch;
 	p->inject_op = pcap_netmap_inject,
 	p->setfilter_op = install_bpf_program;
-	p->setdirection_op = NULL;	/* Not implemented. */
-	p->set_datalink_op = NULL;	/* can't change data link type */
+	p->setdirection_op = NULL;
+	p->set_datalink_op = NULL;
 	p->getnonblock_op = pcap_getnonblock_fd;
 	p->setnonblock_op = pcap_setnonblock_fd;
-	p->stats_op = pcap_stats_netmap;
+	p->stats_op = pcap_netmap_stats;
 	p->cleanup_op = pcap_netmap_close;
 	return (0);
- bad:
+
+    bad:
 	pcap_cleanup_live_common(p);
 	return (PCAP_ERROR);
 }
@@ -211,18 +197,9 @@ pcap_netmap_create(const char *device, char *ebuf, int *is_ours)
 	*is_ours = (!strncmp(device, "netmap:", 7) || !strncmp(device, "vale", 4));
 	if (! *is_ours)
 		return NULL;
-
 	p = pcap_create_common(device, ebuf, sizeof (struct pcap_netmap));
 	if (p == NULL)
 		return (NULL);
-
-	p->activate_op = pcap_activate_netmap;
+	p->activate_op = pcap_netmap_activate;
 	return (p);
-}
-
-int
-pcap_netmap_findalldevs(pcap_if_t **alldevsp, char *errbuf)
-{
-	// fprintf(stderr, "called %s ---\n", __FUNCTION__);
-        return (0);
 }
