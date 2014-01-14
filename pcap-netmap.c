@@ -90,6 +90,24 @@ pcap_stats_netmap(pcap_t *p, struct pcap_stat *ps)
 }
 
 static int
+pcap_netmap_dispatch(pcap_t *p, int cnt, pcap_handler cb, u_char *user)
+{
+	struct pcap_netmap *pf = p->priv;
+	int ret = nm_dispatch(pf->d, cnt, (void *)cb, user);
+	if (1 ||ret)
+		fprintf(stderr, "%s priv %p gives %d\n", __FUNCTION__, p->priv, ret);
+	return ret;
+}
+
+static int
+pcap_netmap_inject(pcap_t *p, const void *buf, size_t size)
+{
+	struct pcap_netmap *pf = p->priv;
+	fprintf(stderr, "%s priv %p\n", __FUNCTION__, p->priv);
+	return nm_inject(pf->d, buf, size);
+}
+
+static int
 pcap_activate_netmap(pcap_t *p)
 {
 	struct pcap_netmap *pf = p->priv;
@@ -122,6 +140,8 @@ pcap_activate_netmap(pcap_t *p)
 			p->opt.source, pcap_strerror(errno));
 		goto bad;
 	}
+	fprintf(stderr, "%s device %d priv %p fd %d\n",
+		__FUNCTION__, p->opt.source, pf->d, pf->d->fd);
 	p->fd = pf->d->fd;
 	//if (!p->opt.immediate)
 	//if (p->opt.promisc)
@@ -133,13 +153,13 @@ pcap_activate_netmap(pcap_t *p)
 	 */
 	p->selectable_fd = p->fd;
 
-	p->read_op = (void *)nm_dispatch;
-	p->inject_op = (void *)nm_inject;
+	p->read_op = pcap_netmap_dispatch;
+	p->inject_op = pcap_netmap_inject,
 	p->setfilter_op = install_bpf_program;
 	p->setdirection_op = NULL;	/* Not implemented. */
 	p->set_datalink_op = NULL;	/* can't change data link type */
-	p->getnonblock_op = pcap_getnonblock_fd;
-	p->setnonblock_op = pcap_setnonblock_fd;
+	//p->getnonblock_op = pcap_getnonblock_fd;
+	//p->setnonblock_op = pcap_setnonblock_fd;
 	p->stats_op = pcap_stats_netmap;
 	// close ?
 	return (0);
@@ -167,7 +187,7 @@ pcap_netmap_create(const char *device, char *ebuf, int *is_ours)
 }
 
 int
-pcap_netmap_finddevs(pcap_if_t **alldevsp, char *errbuf)
+pcap_netmap_findalldevs(pcap_if_t **alldevsp, char *errbuf)
 {
 	fprintf(stderr, "called %s ---\n", __FUNCTION__);
         return (0);
