@@ -153,6 +153,7 @@ pcap_netmap_create(const char *device, char *ebuf, int *is_ours)
 {
 	pcap_t *p;
 
+	fprintf(stderr, "---- %s --- trying device %s -----\n", __FUNCTION__, device);
 	*is_ours = (!strncmp(device, "netmap:", 7) || !strncmp(device, "vale", 4));
 	if (! *is_ours)
 		return NULL;
@@ -165,4 +166,9 @@ pcap_netmap_create(const char *device, char *ebuf, int *is_ours)
 	return (p);
 }
 
-/* no special findalldevs. If needed patch pcap.c */
+int
+pcap_netmap_finddevs(pcap_if_t **alldevsp, char *errbuf)
+{
+	fprintf(stderr, "called %s ---\n", __FUNCTION__);
+        return (0);
+}
