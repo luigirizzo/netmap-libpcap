@@ -1550,6 +1550,28 @@ if test "x$enable_can" != "xno" ; then
 	AC_SUBST(CAN_SRC)
 fi
 
+AC_ARG_ENABLE([netmap],
+[AC_HELP_STRING([--enable-netmap],[enable netmap support @<:@default=yes, if support available@:>@])],
+    [],
+    [enable_netmap=yes])
+
+if test "x$enable_netmap" != "xno" ; then
+        dnl check for netmap support
+        case "$host_os" in
+        *)
+                AC_CHECK_HEADER(net/netmap_user.h,
+                        [ AC_DEFINE(PCAP_SUPPORT_NETMAP, 1, [target host supports netmap])
+                        NETMAP_SRC=pcap-netmap.c
+                        AC_MSG_NOTICE(netmap is supported)],
+                        AC_MSG_NOTICE(netmap is not supported),
+                        [#include <net/netmap_user.h>]
+                   )
+                ;;
+        esac
+        AC_SUBST(PCAP_SUPPORT_NETMAP)
+        AC_SUBST(NETMAP_SRC)
+fi
+
 AC_ARG_ENABLE([dbus],
 [AC_HELP_STRING([--enable-dbus],[enable D-Bus capture support @<:@default=yes, if support available@:>@])],
     [],
