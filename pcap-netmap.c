@@ -116,7 +116,7 @@ pcap_activate_netmap(pcap_t *p)
 			p->opt.source, pcap_strerror(errno));
 		goto bad;
 	}
-	fprintf(stderr, "%s device %d priv %p fd %d\n",
+	fprintf(stderr, "%s device %s priv %p fd %d\n",
 		__FUNCTION__, p->opt.source, d, d->fd);
 	pn->d = d;
 	p->fd = d->fd;
