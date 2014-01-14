@@ -416,7 +416,6 @@ pcap_create(const char *source, char *errbuf)
 	if (source == NULL)
 		source = "any";
 
-fprintf(stderr, "%s %d %s\n", __FUNCTION__, __LINE__ , source);
 	/*
 	 * Try each of the non-local-network-interface capture
 	 * source types until we find one that works for this
