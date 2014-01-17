@@ -22,13 +22,19 @@
 
 #include "pcap-int.h"
 
+/*
+ * older libpcap miss p->priv, use p->md.device instead (and allocate).
+ * Also opt.timeout was in md.timeout before.
+ * Use #define PCAP_IF_UP to discriminate
+ */
 #ifdef PCAP_IF_UP
-#warning ------------ PRIV IS SUPPORTED ----------
 #define NM_PRIV(p)	((struct pcap_netmap *)(p->priv))
+#define the_timeout	opt.timeout
 #else
-#warning ------------ no priv support ----------
 #define HAVE_NO_PRIV
 #define	NM_PRIV(p)	((struct pcap_netmap *)(p->md.device))
+#define SET_PRIV(p, x)	p->md.device = (void *)x
+#define the_timeout	md.timeout
 #endif
 
 #if defined (linux)
@@ -89,7 +95,7 @@ pcap_netmap_dispatch(pcap_t *p, int cnt, pcap_handler cb, u_char *user)
 		ret = nm_dispatch((void *)d, cnt, (void *)pcap_netmap_filter, (void *)p);
 		if (ret != 0)
 			break;
-		poll(&pfd, 1, p->opt.timeout);
+		poll(&pfd, 1, p->the_timeout);
 	}
 	return ret;
 }
@@ -155,7 +161,7 @@ pcap_netmap_close(pcap_t *p)
 	nm_close(d);
 #ifdef HAVE_NO_PRIV
 	free(pn);
-	NM_PRIV(p) = NULL;
+	SET_PRIV(p, NULL); // unnecessary
 #endif
 	pcap_cleanup_live_common(p);
 }
@@ -173,7 +179,7 @@ pcap_netmap_activate(pcap_t *p)
 			p->opt.source, pcap_strerror(errno));
 #ifdef HAVE_NO_PRIV
 		free(pn);
-		NM_PRIV(p) = NULL;
+		SET_PRIV(p, NULL); // unnecessary
 #endif
 		pcap_cleanup_live_common(p);
 		return (PCAP_ERROR);
@@ -214,7 +220,7 @@ pcap_netmap_create(const char *device, char *ebuf, int *is_ours)
 		return NULL;
 #ifdef HAVE_NO_PRIV
 	{
-		struct pcap_netmap *pn = calloc(1, sizeof(*pn));
+		void *pn = calloc(1, sizeof(struct pcap_netmap));
 		if (pn == NULL)
 			return NULL;
 		p = pcap_create_common(device, ebuf);
@@ -222,7 +228,7 @@ pcap_netmap_create(const char *device, char *ebuf, int *is_ours)
 			free(pn);
 			return NULL;
 		}
-		NM_PRIV(p) = pn;
+		SET_PRIV(p, pn);
 	}
 #else
 	p = pcap_create_common(device, ebuf, sizeof (struct pcap_netmap));
