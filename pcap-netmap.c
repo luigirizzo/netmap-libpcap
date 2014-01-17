@@ -22,6 +22,15 @@
 
 #include "pcap-int.h"
 
+#ifdef PCAP_IF_UP
+#warning ------------ PRIV IS SUPPORTED ----------
+#define NM_PRIV(p)	((struct pcap_netmap *)(p->priv))
+#else
+#warning ------------ no priv support ----------
+#define HAVE_NO_PRIV
+#define	NM_PRIV(p)	((struct pcap_netmap *)(p->md.device))
+#endif
+
 #if defined (linux)
 /* On FreeBSD we use IFF_PPROMISC which is in ifr_flagshigh.
  * remap to IFF_PROMISC on linux
@@ -41,7 +50,7 @@ struct pcap_netmap {
 static int
 pcap_netmap_stats(pcap_t *p, struct pcap_stat *ps)
 {
-	struct pcap_netmap *pn = p->priv;
+	struct pcap_netmap *pn = NM_PRIV(p);
 
 	ps->ps_recv = pn->rx_pkts;
 	ps->ps_drop = 0;
@@ -53,7 +62,7 @@ static void
 pcap_netmap_filter(u_char *arg, struct pcap_pkthdr *h, const u_char *buf)
 {
 	pcap_t *p = (pcap_t *)arg;
-	struct pcap_netmap *pn = p->priv;
+	struct pcap_netmap *pn = NM_PRIV(p);
 
 	++pn->rx_pkts;
 	if (bpf_filter(p->fcode.bf_insns, buf, h->len, h->caplen))
@@ -64,7 +73,7 @@ static int
 pcap_netmap_dispatch(pcap_t *p, int cnt, pcap_handler cb, u_char *user)
 {
 	int ret;
-	struct pcap_netmap *pn = p->priv;
+	struct pcap_netmap *pn = NM_PRIV(p);
 	struct nm_desc_t *d = pn->d;
 	struct pollfd pfd = { .fd = p->fd, .events = POLLIN, .revents = 0 };
 
@@ -89,7 +98,7 @@ pcap_netmap_dispatch(pcap_t *p, int cnt, pcap_handler cb, u_char *user)
 static int
 pcap_netmap_inject(pcap_t *p, const void *buf, size_t size)
 {
-	struct nm_desc_t *d = ((struct pcap_netmap *)p->priv)->d;
+	struct nm_desc_t *d = NM_PRIV(p)->d;
 
 	return nm_inject(d, buf, size);
 }
@@ -97,7 +106,7 @@ pcap_netmap_inject(pcap_t *p, const void *buf, size_t size)
 static int
 pcap_netmap_ioctl(pcap_t *p, u_long what, uint32_t *if_flags)
 {
-	struct pcap_netmap *pn = p->priv;
+	struct pcap_netmap *pn = NM_PRIV(p);
 	struct nm_desc_t *d = pn->d;
 	struct ifreq ifr;
 	int error, fd = d->fd;
@@ -132,7 +141,7 @@ pcap_netmap_ioctl(pcap_t *p, u_long what, uint32_t *if_flags)
 static void
 pcap_netmap_close(pcap_t *p)
 {
-	struct pcap_netmap *pn = p->priv;
+	struct pcap_netmap *pn = NM_PRIV(p);
 	struct nm_desc_t *d = pn->d;
 	uint32_t if_flags = 0;
 
@@ -144,12 +153,17 @@ pcap_netmap_close(pcap_t *p)
 		}
 	}
 	nm_close(d);
+#ifdef HAVE_NO_PRIV
+	free(pn);
+	NM_PRIV(p) = NULL;
+#endif
+	pcap_cleanup_live_common(p);
 }
 
 static int
 pcap_netmap_activate(pcap_t *p)
 {
-	struct pcap_netmap *pn = p->priv;
+	struct pcap_netmap *pn = NM_PRIV(p);
 	struct nm_desc_t *d = nm_open(p->opt.source, NULL, 0, 0);
 	uint32_t if_flags = 0;
 
@@ -157,7 +171,12 @@ pcap_netmap_activate(pcap_t *p)
 		snprintf(p->errbuf, PCAP_ERRBUF_SIZE,
 			"netmap open: cannot access %s: %s\n",
 			p->opt.source, pcap_strerror(errno));
-		goto bad;
+#ifdef HAVE_NO_PRIV
+		free(pn);
+		NM_PRIV(p) = NULL;
+#endif
+		pcap_cleanup_live_common(p);
+		return (PCAP_ERROR);
 	}
 	fprintf(stderr, "%s device %s priv %p fd %d ports %d..%d\n",
 		__FUNCTION__, p->opt.source, d, d->fd, d->first_rx_ring, d->last_rx_ring);
@@ -183,10 +202,6 @@ pcap_netmap_activate(pcap_t *p)
 	p->stats_op = pcap_netmap_stats;
 	p->cleanup_op = pcap_netmap_close;
 	return (0);
-
-    bad:
-	pcap_cleanup_live_common(p);
-	return (PCAP_ERROR);
 }
 
 pcap_t *
@@ -197,9 +212,23 @@ pcap_netmap_create(const char *device, char *ebuf, int *is_ours)
 	*is_ours = (!strncmp(device, "netmap:", 7) || !strncmp(device, "vale", 4));
 	if (! *is_ours)
 		return NULL;
+#ifdef HAVE_NO_PRIV
+	{
+		struct pcap_netmap *pn = calloc(1, sizeof(*pn));
+		if (pn == NULL)
+			return NULL;
+		p = pcap_create_common(device, ebuf);
+		if (p == NULL) {
+			free(pn);
+			return NULL;
+		}
+		NM_PRIV(p) = pn;
+	}
+#else
 	p = pcap_create_common(device, ebuf, sizeof (struct pcap_netmap));
 	if (p == NULL)
 		return (NULL);
+#endif
 	p->activate_op = pcap_netmap_activate;
 	return (p);
 }
