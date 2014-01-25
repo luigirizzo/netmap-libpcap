@@ -46,7 +46,7 @@
 #endif /* linux */
 
 struct pcap_netmap {
-	struct nm_desc_t *d;	/* pointer returned by nm_open() */
+	struct nm_desc *d;	/* pointer returned by nm_open() */
 	pcap_handler cb;	/* callback and argument */
 	u_char *cb_arg;
 	int must_clear_promisc;	/* flag */
@@ -80,7 +80,7 @@ pcap_netmap_dispatch(pcap_t *p, int cnt, pcap_handler cb, u_char *user)
 {
 	int ret;
 	struct pcap_netmap *pn = NM_PRIV(p);
-	struct nm_desc_t *d = pn->d;
+	struct nm_desc *d = pn->d;
 	struct pollfd pfd = { .fd = p->fd, .events = POLLIN, .revents = 0 };
 
 	pn->cb = cb;
@@ -104,7 +104,7 @@ pcap_netmap_dispatch(pcap_t *p, int cnt, pcap_handler cb, u_char *user)
 static int
 pcap_netmap_inject(pcap_t *p, const void *buf, size_t size)
 {
-	struct nm_desc_t *d = NM_PRIV(p)->d;
+	struct nm_desc *d = NM_PRIV(p)->d;
 
 	return nm_inject(d, buf, size);
 }
@@ -113,7 +113,7 @@ static int
 pcap_netmap_ioctl(pcap_t *p, u_long what, uint32_t *if_flags)
 {
 	struct pcap_netmap *pn = NM_PRIV(p);
-	struct nm_desc_t *d = pn->d;
+	struct nm_desc *d = pn->d;
 	struct ifreq ifr;
 	int error, fd = d->fd;
 
@@ -148,7 +148,7 @@ static void
 pcap_netmap_close(pcap_t *p)
 {
 	struct pcap_netmap *pn = NM_PRIV(p);
-	struct nm_desc_t *d = pn->d;
+	struct nm_desc *d = pn->d;
 	uint32_t if_flags = 0;
 
 	if (pn->must_clear_promisc) {
@@ -170,7 +170,7 @@ static int
 pcap_netmap_activate(pcap_t *p)
 {
 	struct pcap_netmap *pn = NM_PRIV(p);
-	struct nm_desc_t *d = nm_open(p->opt.source, NULL, 0, 0);
+	struct nm_desc *d = nm_open(p->opt.source, NULL, 0, 0);
 	uint32_t if_flags = 0;
 
 	if (d == NULL) {
