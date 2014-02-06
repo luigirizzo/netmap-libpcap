@@ -1,7 +1,27 @@
 /*
- * Copyright 2014 Universita` di Pisa
+ * Copyright (C) 2014 Luigi Rizzo. All rights reserved.
  *
- * packet filter subroutines for netmap
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *   1. Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *   2. Redistributions in binary form must reproduce the above copyright
+ *      notice, this list of conditions and the following disclaimer in the
+ *      documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``S IS''AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -23,6 +43,8 @@
 #include "pcap-int.h"
 
 /*
+ * This code is meant to build also on older versions of libpcap.
+ *
  * older libpcap miss p->priv, use p->md.device instead (and allocate).
  * Also opt.timeout was in md.timeout before.
  * Use #define PCAP_IF_UP to discriminate
@@ -50,7 +72,7 @@ struct pcap_netmap {
 	pcap_handler cb;	/* callback and argument */
 	u_char *cb_arg;
 	int must_clear_promisc;	/* flag */
-	uint64_t rx_pkts;	/* count of packets received before the filter */
+	uint64_t rx_pkts;	/* # of pkts received before the filter */
 };
 
 static int
@@ -170,7 +192,7 @@ static int
 pcap_netmap_activate(pcap_t *p)
 {
 	struct pcap_netmap *pn = NM_PRIV(p);
-	struct nm_desc *d = nm_open(p->opt.source, NULL, 0, 0);
+	struct nm_desc *d = nm_open(p->opt.source, 0, NULL);
 	uint32_t if_flags = 0;
 
 	if (d == NULL) {
@@ -185,7 +207,8 @@ pcap_netmap_activate(pcap_t *p)
 		return (PCAP_ERROR);
 	}
 	fprintf(stderr, "%s device %s priv %p fd %d ports %d..%d\n",
-		__FUNCTION__, p->opt.source, d, d->fd, d->first_rx_ring, d->last_rx_ring);
+		__FUNCTION__, p->opt.source, d, d->fd,
+		d->first_rx_ring, d->last_rx_ring);
 	pn->d = d;
 	p->fd = d->fd;
 	if (p->opt.promisc && !(d->req.nr_ringid & NETMAP_SW_RING)) {
