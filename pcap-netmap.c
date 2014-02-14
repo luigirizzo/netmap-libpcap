@@ -192,7 +192,7 @@ static int
 pcap_netmap_activate(pcap_t *p)
 {
 	struct pcap_netmap *pn = NM_PRIV(p);
-	struct nm_desc *d = nm_open(p->opt.source, 0, NULL);
+	struct nm_desc *d = nm_open(p->opt.source, NULL, 0, NULL);
 	uint32_t if_flags = 0;
 
 	if (d == NULL) {
