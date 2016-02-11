@@ -1,5 +1,17 @@
 LIBPCAP 1.x.y
 
+NOTE FOR OVERRIDING LIBRARIES
+Ubuntu uses apparmor to control critical system binaries,
+preventing things like overriding the libraries.
+To use tcpdump with this library
+
+    sudo apt-get install apparmor-utils
+    sudo aa-complain tcpdump
+    <build>
+    ln -s ./libpcap.so.1.6.0-PRE-GIT libpcap.so.0.8
+    sudo LD_LIBRARY_PATH=. tcpdump ...
+
+----
 www.tcpdump.org
 
 Please send inquiries/comments/reports to:
