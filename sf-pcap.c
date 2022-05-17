@@ -709,6 +709,14 @@ pcap_dump_ftell(pcap_dumper_t *p)
 	return (ftell((FILE *)p));
 }
 
+#if _FILE_OFFSET_BITS == 64 || _POSIX_C_SOURCE >= 200112L
+off_t
+pcap_dump_ftell64(pcap_dumper_t *p)
+{
+	return (ftello((FILE *)p));
+}
+#endif
+
 int
 pcap_dump_flush(pcap_dumper_t *p)
 {
